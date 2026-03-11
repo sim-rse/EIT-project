@@ -29,9 +29,7 @@ def bfs(maze, start, end):
                     queue.append(((nx,ny), path + [(nx,ny)]))
     return None
 
-# ===============================
-# Gebruik je bestaande code
-# ===============================
+# bestaande code gebruiken van de camera 
 cap = cv2.VideoCapture(0)
 matrix_rows = 500
 matrix_cols = 500
@@ -45,29 +43,25 @@ while True:
     blur = cv2.GaussianBlur(gray, (5,5), 0)
     _, thresh = cv2.threshold(blur, 100, 255, cv2.THRESH_BINARY_INV)
 
-    # Jullie bestaande maze_matrix
+    # bestaande maze_matrix
     small_thresh = cv2.resize(thresh, (matrix_cols, matrix_rows), interpolation=cv2.INTER_NEAREST)
     maze_matrix = small_thresh // 255
 
-    # ===============================
     # Start en einde voor BFS
-    # ===============================
     start = (0,0)                   # linksboven
     end = (matrix_rows-1, matrix_cols-1)  # rechtsonder
     
     
     path = bfs(maze_matrix, start, end)  # kortste pad vinden
 
-    # ===============================
-    # Pad tekenen op origineel frame
-    # ===============================
+    # Pad tekenen op orig.frame
     if path:
         for (x,y) in path:
             px = int(y * frame.shape[1] / matrix_cols)
             py = int(x * frame.shape[0] / matrix_rows)
             cv2.circle(frame, (px,py), 1, (0,0,255), -1)  # rode stipjes"""
 
-    # Toon beelden
+    # show the beelden
     cv2.imshow("Origineel", frame)
     cv2.imshow("Threshold", thresh)
 
@@ -75,4 +69,5 @@ while True:
         break
 
 cap.release()
+
 cv2.destroyAllWindows()
