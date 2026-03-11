@@ -52,14 +52,14 @@ while True:
     end = (matrix_rows-1, matrix_cols-1)  # rechtsonder
     
     
-    path = bfs(maze_matrix, start, end)  # kortste pad vinden
+    """path = bfs(maze_matrix, start, end)  # kortste pad vinden
 
     # Pad tekenen op orig.frame
     if path:
         for (x,y) in path:
             px = int(y * frame.shape[1] / matrix_cols)
             py = int(x * frame.shape[0] / matrix_rows)
-            cv2.circle(frame, (px,py), 1, (0,0,255), -1)  # rode stipjes"""
+            cv2.circle(frame, (px,py), 1, (0,0,255), -1)  # rode stipjes""" 
 
     # show the beelden
     cv2.imshow("Origineel", frame)
@@ -71,3 +71,4 @@ while True:
 cap.release()
 
 cv2.destroyAllWindows()
+
