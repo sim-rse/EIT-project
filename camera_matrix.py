@@ -11,8 +11,8 @@ import numpy as np
 # Camera starten
 cap = cv2.VideoCapture(0)
 
-# Stel grootte van de doolhof-matrix in
-matrix_rows = 500  # groter = meer resolutie
+# grootte van de doolhof-matrix instellen
+matrix_rows = 500  # hoe groter = hoe meer resolutie
 matrix_cols = 500
 
 while True:
@@ -29,11 +29,8 @@ while True:
     # 3. Threshold → zwart/wit
     _, thresh = cv2.threshold(blur, 100, 255, cv2.THRESH_BINARY_INV)
 
-    # ===============================
     # 4. GROOTSTE MATRIX: hele beeld
-    # ===============================
-
-    # Resize naar gewenste matrixgrootte
+    #naar de juiste matrixgrootte gaan 
     small_thresh = cv2.resize(thresh, (matrix_cols, matrix_rows), interpolation=cv2.INTER_NEAREST)
 
     # Omzetten naar 0-1 matrix
@@ -42,9 +39,7 @@ while True:
     print("Matrix:")
     print(maze_matrix)
 
-    # ===============================
-    # 5. (optioneel) toon beelden
-    # ===============================
+    # 5.toon beelden
     cv2.imshow("Origineel", frame)
     cv2.imshow("Threshold", thresh)
 
@@ -52,4 +47,5 @@ while True:
         break
 
 cap.release()
+
 cv2.destroyAllWindows()
