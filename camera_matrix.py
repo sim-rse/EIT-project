@@ -36,8 +36,8 @@ while True:
     # Omzetten naar 0-1 matrix
     maze_matrix = small_thresh // 255
 
-    print("Matrix:")
-    print(maze_matrix)
+    #print("Matrix:")
+    #print(maze_matrix)
 
     # 5.toon beelden
     cv2.imshow("Origineel", frame)

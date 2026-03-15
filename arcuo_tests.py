@@ -4,29 +4,14 @@ import numpy as np
 import time
 from Realsense import RealSenseCamera
 
-MODE = 'realsense'
+MODE = 'webcam'
 
 #img = cv2.imread("data/testarea.png")
 aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 detector = aruco.ArucoDetector(aruco_dict)
 
-
-if MODE == 'realsense':
-    camera = RealSenseCamera()
-    camera.start_async()
-elif MODE == 'webcam':
-    cap = cv2.VideoCapture(1) #camera id = 0
-else:
-    raise NameError('not existing mode selected, please check your spelling')
-
-while True:
-    if MODE == 'realsense':
-        frame = camera.get_latest_frame()
-        color_image = frame.color_map
-    else:
-        _, color_image = cap.read()
-    
-    corners, ids, _ = detector.detectMarkers(color_image)
+def get_zone(image, zone_width = 600, zone_height = 400):
+    corners, ids, _ = detector.detectMarkers(image)
 
     print(f"corners: {corners}\nid's: {ids}")
     
@@ -44,27 +29,44 @@ while True:
         ], dtype=np.float32)
 
 
-        width = 600
-        height = 400
 
         dst = np.array([
             [0, 0],
-            [width, 0],
-            [width, height],
-            [0, height]
+            [zone_width, 0],
+            [zone_width, zone_height],
+            [0, zone_height]
         ], dtype=np.float32)
 
         M = cv2.getPerspectiveTransform(pts, dst)
-        warped = cv2.warpPerspective(color_image, M, (width, height))
+        warped = cv2.warpPerspective(image, M, (zone_width, zone_height))
 
         cv2.imshow("warped", warped)
 
-    aruco.drawDetectedMarkers(color_image, corners, ids)
-    cv2.imshow("markers", color_image)
-    
+    aruco.drawDetectedMarkers(image, corners, ids)
+    cv2.imshow("markers", image)
+    return 0
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-    time.sleep(0.5)
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    if MODE == 'realsense':
+        camera = RealSenseCamera()
+        camera.start_async()
+    elif MODE == 'webcam':
+        cap = cv2.VideoCapture(0) #camera id = 0
+    else:
+        raise NameError('not existing mode selected, please check your spelling')
+
+    while True:
+        if MODE == 'realsense':
+            frame = camera.get_latest_frame()
+            color_image = frame.color_map
+        else:
+            _, color_image = cap.read()
+        
+        get_zone(color_image)
+        
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        time.sleep(0.5)
+    cap.release()
+    cv2.destroyAllWindows()
