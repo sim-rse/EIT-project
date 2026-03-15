@@ -48,16 +48,16 @@ MAXPWMUINT16 = 498 #dit is de PWM waarde die voor max dutycycle zorgt, hogere wa
 
 def PWM_left(dutycycle, forwards = True):       #geeft
     if forwards:
-        ser.write(f'lf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'lf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
     else:
-        ser.write(f'lb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'lb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
         
 
 def PWM_right(dutycycle, forwards = True):
     if forwards:
-        ser.write(f'rf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'rf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
     else:
-        ser.write(f'rb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'rb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
 
 def move_forward(speed):
     """Rijd rechtdoor aan de opgegeven snelheid (0-100 %)."""
@@ -118,6 +118,7 @@ end         = (0, 11)           # uitgang: rechtsboven, pijl wijst naar rechts
 # ── Seriële poort (zelfde als spier_enkel_notch) ─────────────────────────────
 BAUD          = 444444          # baudrate van de microcontroller
 PORT          = 'COM6'          # seriële poort → aanpassen indien nodig
+PORT_DRIVE    = 'COM5'
 printsnelheid = 10              # Hz: aantal samples per seconde van de microcontroller
 FS            = int(1000 / printsnelheid)  # sample frequentie in Hz (= 100 Hz)
 
@@ -411,13 +412,18 @@ def update_speed(spier_gespannen):
 # ─────────────────────────────────────────────────────────────────────────────
 # SERIËLE POORT INITIALISATIE  (zelfde als spier_enkel_notch)
 # ─────────────────────────────────────────────────────────────────────────────
+def UART_intit(PORT, BAUD):
+    ser = serial.Serial(port=PORT, baudrate=BAUD, timeout=0.1)  # seriële verbinding openen
+    if ser.is_open:
+        print(f"Connectie geslaagd met {PORT} @ {BAUD} baud")   # verbinding gelukt
+    else:
+        print(f"Connectie aan poort {PORT} gefaald")  # verbinding mislukt → programma stoppen
+        exit()
+    return ser
 
-ser = serial.Serial(port=PORT, baudrate=BAUD, timeout=0.1)  # seriële verbinding openen
-if ser.is_open:
-    print(f"Connectie geslaagd met {PORT} @ {BAUD} baud")   # verbinding gelukt
-else:
-    print("Connectie gefaald")  # verbinding mislukt → programma stoppen
-    exit()
+ser = UART_intit(PORT, BAUD)
+ser_drive = UART_intit(PORT_DRIVE, BAUD) #maakt een tweede seriele connectie voor de microcontroller op de wagen (waarmee we de motoren zullen aansturen)
+
 
 ser.write(f's200\n'.encode('ascii'))    # stuur samplesnelheid naar microcontroller (zelfde als spier_enkel_notch)
 
