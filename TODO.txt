@@ -1,0 +1,9 @@
+wachten tot stap voltooid is om naar volgende stap te gaan
+
+wij hebben twee microcontrollers == twee ser en uart's (zorg telkens dat de juiste gebruikt wordt!)
+
+rotatie:
+    -rotspeed!! (lineaire regressie)
+    of helemaal anders: feedbackmechanisme dat kijkt naar de orientatie van de auto (met de orientatie functie)
+
+Afstappen van uart (ziet er voorlopig vrij traag uit om de commando's te zenden en te processen dus de auto kan al wat verder zitten tegen de tijd dat het de info krijgt)?
