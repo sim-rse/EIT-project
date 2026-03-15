@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt     # grafieken plotten bij afsluiten (zelfde al
 import cv2                          # camera en beeldverwerking (zelfde als camera_matrix / orientatie)
 from collections import deque       # wachtrij voor BFS (zelfde als pad_herkenning)
 import time                         # tijdsmeting voor snelheidsregeling
-
+import cv2.aruco as aruco
 # ─────────────────────────────────────────────────────────────────────────────
 # MOTOR FUNCTIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ end         = (0, 11)           # uitgang: rechtsboven, pijl wijst naar rechts
 
 # ── Seriële poort (zelfde als spier_enkel_notch) ─────────────────────────────
 BAUD          = 444444          # baudrate van de microcontroller
-PORT          = 'COM6'          # seriële poort → aanpassen indien nodig
-PORT_DRIVE    = 'COM5'
+PORT          = 'COM6'          # seriële poort voor spier en laser sensoren → aanpassen indien nodig
+PORT_DRIVE    = 'COM5'          # seriële poort voor controller op de wagen → ook aanpassen indien nodig
 printsnelheid = 10              # Hz: aantal samples per seconde van de microcontroller
 FS            = int(1000 / printsnelheid)  # sample frequentie in Hz (= 100 Hz)
 
@@ -178,6 +178,10 @@ last_time        = time.time()  # tijdstip van laatste snelheidsupdate
 b_notch, a_notch = signal.iirnotch(50.0, 30.0, FS)  # notchfilter op 50 Hz, Q-factor 30
 zi_notch = signal.lfilter_zi(b_notch, a_notch) * 0   # beginwaarden filter (= 0 bij start)
 
+# ── Aruco initialisatie ──────────────────────────────────────────────────────
+dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+detector = aruco.ArucoDetector(dictionary)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BFS FUNCTIE  (exact overgenomen uit pad_herkenning.py)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -214,7 +218,7 @@ def bfs(maze, start, end):
 # ORIËNTATIE FUNCTIES  (gebaseerd op orientatie.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def bepaal_orientatie(frame):
+def bepaal_orientatie(frame, id_sought = 0):
     """
     Bepaalt de oriëntatie van de auto op basis van witte tape markers.
     De auto heeft 2 witte tapes aan de voorkant en 1 aan de achterkant.
@@ -222,51 +226,29 @@ def bepaal_orientatie(frame):
     als referentiepunt, en berekent de hoek naar de achterkant.
     Geeft (hoek_in_graden, frame_met_annotaties) terug, of (None, frame) bij fout.
     """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)          # kleur → grijs (zelfde als orientatie.py)
-    blur = cv2.GaussianBlur(gray, (5,5), 0)                 # ruis verwijderen met Gaussiaanse blur
-    _, thresh = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)  # detecteer witte tape (drempel 200)
+    # image: BGR frame from cv2
+    # marker_length: real marker size (any unit, only needed for pose)
 
-    # Contours detecteren: vindt de omtrekken van witte vlakken
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    corners, ids, _ = detector.detectMarkers(frame)
+    
 
-    front_markers = []  # voorkant: 2 witte tapes
-    back_marker   = None  # achterkant: 1 witte tape
+    if ids is None:
+        print("geen aruco gevonden")
+        return 0
+    
+    marker_dict = {id_[0]: corner for corner, id_ in zip(corners, ids)}
+    if id_sought not in marker_dict:
+        print("geen aruco van juiste index gevonden !!")
+        return 0
 
-    for cnt in contours:                        # loop over alle gevonden contouren
-        area = cv2.contourArea(cnt)             # bereken oppervlakte van contour
-        if area > 50:                           # filter kleine ruis weg (zelfde drempel als orientatie.py)
-            x,y,w,h = cv2.boundingRect(cnt)     # bounding box rond het witte vlak
-            cx = x + w//2                       # x-coördinaat van het middelpunt
-            cy = y + h//2                       # y-coördinaat van het middelpunt
+    pts = marker_dict[id_sought][0]
+    v = pts[1] - pts[0]  # top edge direction
+    angle = np.degrees(np.arctan2(v[1], v[0]))
 
-            if len(front_markers) < 2:          # eerste 2 grote vlakken = voorkant markers
-                front_markers.append((cx,cy))
-            else:                               # 3e grote vlak = achterkant marker
-                back_marker = (cx,cy)
+    aruco.drawDetectedMarkers(frame, corners, ids)
+    cv2.putText(frame, f"Angle: {int(angle)} deg", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
-            cv2.rectangle(frame, (x,y), (x+w, y+h), (0,255,0), 2)  # groene box tekenen (zelfde als orientatie.py)
-
-    # Oriëntatie berekenen (exact zelfde logica als orientatie.py)
-    if len(front_markers) == 2 and back_marker is not None:
-
-        # Midden van de 2 voorkant-markers berekenen (zie orientatie.py regel 48-49)
-        fx = (front_markers[0][0] + front_markers[1][0]) / 2  # gemiddelde x van beide voorkant punten
-        fy = (front_markers[0][1] + front_markers[1][1]) / 2  # gemiddelde y van beide voorkant punten
-
-        # Richtingsvector van voorkant-midden naar achterkant (zelfde als orientatie.py regel 51-52)
-        dir_x = back_marker[0] - fx  # horizontale component van de richting
-        dir_y = back_marker[1] - fy  # verticale component van de richting
-
-        # Hoek berekenen in graden (zelfde als orientatie.py regel 53)
-        angle = np.degrees(np.arctan2(dir_y, dir_x))
-
-        # Richtingspijl en hoektekst op frame tekenen (zelfde als orientatie.py regel 55-56)
-        cv2.arrowedLine(frame, (int(fx), int(fy)), (int(back_marker[0]), int(back_marker[1])), (255,0,0), 2)
-        cv2.putText(frame, f"Angle: {int(angle)} deg", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-
-        return angle, frame  # geef de hoek en het geannoteerde frame terug
-
-    return None, frame  # niet genoeg markers gevonden
+    return angle, frame
 
 
 def bereken_benodigde_draai(huidige_hoek, gewenste_richting):
