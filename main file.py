@@ -37,6 +37,7 @@ import cv2                          # camera en beeldverwerking (zelfde als came
 from collections import deque       # wachtrij voor BFS (zelfde als pad_herkenning)
 import time                         # tijdsmeting voor snelheidsregeling
 import cv2.aruco as aruco
+import queue
 # ─────────────────────────────────────────────────────────────────────────────
 # MOTOR FUNCTIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,11 +110,13 @@ def stop_motors():
 # CONSTANTEN & INSTELLINGEN
 # ─────────────────────────────────────────────────────────────────────────────
 
+TESTMODE = True
+
 # ── Doolhof afmetingen (uit de opgave) ───────────────────────────────────────
 matrix_rows = 8                 # aantal rijen in het doolhof (korte zijde = 2 m)
 matrix_cols = 12                # aantal kolommen in het doolhof (lange zijde = 3 m)
-start       = (7, 0)            # ingang: linksonder, pijl wijst omhoog
-end         = (0, 11)           # uitgang: rechtsboven, pijl wijst naar rechts
+START       = (6, 0)            # ingang: linksonder, pijl wijst omhoog
+END         = (0, 10)           # uitgang: rechtsboven, pijl wijst naar rechts
 
 # ── Seriële poort (zelfde als spier_enkel_notch) ─────────────────────────────
 BAUD          = 444444          # baudrate van de microcontroller
@@ -183,10 +186,81 @@ dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 detector = aruco.ArucoDetector(dictionary)
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DOOLHOF HERKRNNINGS FUNCTIEs  (overgenomen uit aruco_tests.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_zone(image, zone_width = 8*10, zone_height = 12*10):
+    corners, ids, _ = detector.detectMarkers(image)
+
+    print(f"corners: {corners}\nid's: {ids}")
+    
+    def check_ids(ids, ids_to_look_for):
+        treshhold = len(ids_to_look_for)
+        already_found = []
+        for id in ids:
+            if id in ids_to_look_for and id not in already_found:
+                already_found.append(id)
+        return len(already_found)==treshhold
+    
+    if ids is None or not check_ids(ids,[1,2,3,4]):
+        print("Niet genoeg markers")
+        return False, None
+    else:
+        marker_dict = {id_[0]: corner for corner, id_ in zip(corners, ids)}
+        pts = np.array([
+            marker_dict[1][0][0],  # TL
+            marker_dict[2][0][1],  # TR
+            marker_dict[3][0][2],  # BR
+            marker_dict[4][0][3],  # BL
+        ], dtype=np.float32)
+
+
+
+        dst = np.array([
+            [0, 0],
+            [zone_width, 0],
+            [zone_width, zone_height],
+            [0, zone_height]
+        ], dtype=np.float32)
+
+        M = cv2.getPerspectiveTransform(pts, dst)
+        warped = cv2.warpPerspective(image, M, (zone_width, zone_height))
+
+        cv2.imshow("warped", warped)
+
+    aruco.drawDetectedMarkers(image, corners, ids)
+    image = cv2.resize(image, (zone_width*3, zone_height*3))
+    cv2.imshow("markers", image)
+    return True, warped
+
+def to_matrix(img, target_h = 12, target_w = 8):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    h, w = gray.shape
+
+    block_h = h // target_h
+    block_w = w // target_w
+
+    # Crop so blocks fit perfectly
+    gray = gray[:block_h * target_h, :block_w * target_w]
+
+    # Reshape to blocks
+    blocks = gray.reshape(target_h, block_h, target_w, block_w)
+
+    # Average each block
+    means = blocks.mean(axis=(1, 3))
+
+    # Convert to binary
+    bw = (means > 127).astype(int)
+
+    #print(bw)
+    return bw.tolist()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # BFS FUNCTIE  (exact overgenomen uit pad_herkenning.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def bfs(maze, start, end):
+def bfs(maze, start, end, allowed_color = 1):
     """
     BFS pathfinding (= breadth first search).
     Zoekt het kortste pad van start naar end in het doolhof.
@@ -208,12 +282,41 @@ def bfs(maze, start, end):
         for dx,dy in directions:             # alle 4 buren bekijken
             nx, ny = x+dx, y+dy              # coördinaten van de buurcel berekenen
             if 0<=nx<rows and 0<=ny<cols:    # controleer of buurcel binnen het grid valt
-                if maze[nx][ny]==0 and (nx,ny) not in visited:  # vrij pad en nog niet bezocht
+                if maze[nx][ny]==allowed_color and (nx,ny) not in visited:  # vrij pad en nog niet bezocht
                     visited.add((nx,ny))     # markeer als bezocht zodat we niet terugkeren
                     queue.append(((nx,ny), path + [(nx,ny)]))   # voeg toe aan wachtrij met uitgebreid pad
     return None                              # geen pad gevonden (zou niet mogen bij correct doolhof)
 
+def convert_to_path(my_node):
+    my_list = []
+    while True:
+        my_list.append(my_node['pos'])
+        if my_node['parent'] == None:
+            return my_list
+        my_node = my_node['parent']
 
+def BFS(maze, start, end, allowed_color = 1):
+    start_state = {'pos':start,'parent':None}
+    q = queue.Queue()
+    q.put(start_state)
+
+    rows, cols = len(maze), len(maze[0])
+    
+    while q.empty() == False:
+        state = q.get()
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        for zet in directions:
+            new_pos = (state['pos'][0]+zet[0],state['pos'][1]+zet[1])
+            if 0<=new_pos[0]<rows and 0<=new_pos[1]<cols:       #als hij nog in de maze zit
+                if maze[new_pos[0]][new_pos[1]] == allowed_color:
+                    new_state = {'pos':new_pos,'parent':state}
+                    if new_pos == (end) :
+                        print("Oplossing gevonden!!!")
+                        path = convert_to_path(new_state)
+                        return path
+                    else: 
+                        q.put(new_state)
+    return None
 # ─────────────────────────────────────────────────────────────────────────────
 # ORIËNTATIE FUNCTIES  (gebaseerd op orientatie.py)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,27 +497,34 @@ def update_speed(spier_gespannen):
 # ─────────────────────────────────────────────────────────────────────────────
 # SERIËLE POORT INITIALISATIE  (zelfde als spier_enkel_notch)
 # ─────────────────────────────────────────────────────────────────────────────
-def UART_intit(PORT, BAUD):
-    ser = serial.Serial(port=PORT, baudrate=BAUD, timeout=0.1)  # seriële verbinding openen
-    if ser.is_open:
-        print(f"Connectie geslaagd met {PORT} @ {BAUD} baud")   # verbinding gelukt
-    else:
-        print(f"Connectie aan poort {PORT} gefaald")  # verbinding mislukt → programma stoppen
-        exit()
-    return ser
 
-ser = UART_intit(PORT, BAUD)
-ser_drive = UART_intit(PORT_DRIVE, BAUD) #maakt een tweede seriele connectie voor de microcontroller op de wagen (waarmee we de motoren zullen aansturen)
+if not TESTMODE: 
+    def UART_intit(PORT, BAUD):
+        ser = serial.Serial(port=PORT, baudrate=BAUD, timeout=0.1)  # seriële verbinding openen
+        if ser.is_open:
+            print(f"Connectie geslaagd met {PORT} @ {BAUD} baud")   # verbinding gelukt
+        else:
+            print(f"Connectie aan poort {PORT} gefaald")  # verbinding mislukt → programma stoppen
+            exit()
+        return ser
+
+    ser = UART_intit(PORT, BAUD)
+    ser_drive = UART_intit(PORT_DRIVE, BAUD) #maakt een tweede seriele connectie voor de microcontroller op de wagen (waarmee we de motoren zullen aansturen)
 
 
-ser.write(f's200\n'.encode('ascii'))    # stuur samplesnelheid naar microcontroller (zelfde als spier_enkel_notch)
+    ser.write(f's200\n'.encode('ascii'))    # stuur samplesnelheid naar microcontroller (zelfde als spier_enkel_notch)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CAMERA INITIALISATIE  (zelfde als camera_matrix.py en pad_herkenning.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-cap = cv2.VideoCapture(0)   # camera starten op index 0 (eerste beschikbare camera)
 
+if TESTMODE:
+    img = cv2.imread("data\\labyrinthe_aruco_perspective.png")
+    print("testmode enabled!")
+else:
+    cap = cv2.VideoCapture(0)   # camera starten op index 0 (eerste beschikbare camera)
+    
 # ─────────────────────────────────────────────────────────────────────────────
 # FASE 1: DOOLHOF INLEZEN  (gebaseerd op camera_matrix.py)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -423,39 +533,20 @@ cap = cv2.VideoCapture(0)   # camera starten op index 0 (eerste beschikbare came
 
 print("Bezig met doolhof inlezen via camera...")
 
-maze_matrix = None                          # nog geen matrix beschikbaar
-while maze_matrix is None:                  # blijf proberen tot een geldig frame gelezen is
-    ret, frame = cap.read()                 # lees één frame van de camera (zelfde als camera_matrix.py)
-    if not ret:                             # frame lezen mislukt
-        continue                            # opnieuw proberen
+maze_matrix = None
 
-    # 1. Grijs maken (zelfde als camera_matrix.py)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+cv2.imshow("markers", img)
+cv2.waitKey()
 
-    # 2. Blur voor minder ruis (zelfde als camera_matrix.py)
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
-
-    # 3. Threshold → zwart/wit: zwart pad wordt wit, witte muren worden zwart
-    _, thresh = cv2.threshold(blur, 100, 255, cv2.THRESH_BINARY_INV)   # zelfde als camera_matrix.py
-
-    # 4. Verkleinen naar doolhof matrixgrootte (zelfde als camera_matrix.py)
-    small_thresh = cv2.resize(thresh, (matrix_cols, matrix_rows), interpolation=cv2.INTER_NEAREST)
-
-    # Omzetten naar 0-1 matrix: 0 = vrij pad (zwart), 1 = muur (wit)
-    maze_matrix = small_thresh // 255       # zelfde als camera_matrix.py
-
-    print("Matrix:")                        # zelfde print als camera_matrix.py
-    print(maze_matrix)
-
-    # Beelden tonen (zelfde als camera_matrix.py)
-    cv2.imshow("Origineel", frame)
-    cv2.imshow("Threshold", thresh)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):   # stop bij 'q' (zelfde als camera_matrix.py)
-        cap.release()
-        cv2.destroyAllWindows()
-        ser.close()
-        exit()
+while True:
+    if TESTMODE:
+        frame = img
+    else:
+        frame = cap.read()
+    success, warped_image = get_zone(frame, matrix_cols*5, matrix_rows*5)    #leest frame en return een image van de doolhof
+    if success:
+        break
+maze_matrix = to_matrix(warped_image,12,8)
 
 print("Doolhof matrix succesvol ingelezen.")
 
@@ -465,9 +556,14 @@ print("Doolhof matrix succesvol ingelezen.")
 # Bereken het kortste pad van ingang naar uitgang.
 # BFS garandeert het kortste pad → foute/doodlopende wegen worden automatisch vermeden.
 
-print(f"Pad zoeken van {start} naar {end} ...")
+print(f"Pad zoeken van {START} naar {END} ...")
 
-path = bfs(maze_matrix, start, end)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
+path = BFS(maze_matrix, START, END)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
+
+
+print(f"path = {path}")
+cv2.waitKey()
+exit()
 
 if path is None:                            # geen pad gevonden in het doolhof
     print("FOUT: Geen pad gevonden! Controleer de camera of het doolhof.")
