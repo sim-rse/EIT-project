@@ -541,9 +541,9 @@ try:
                 elif not baseline_done:                          # 5 seconden voorbij, nog geen baseline
                     baseline = median(baseline_check)            # mediaan als baseline (zelfde als spier_enkel_notch)
                     baseline_done = True                         # markeer baseline als gedaan
-                    print("\n\n\n\n")
+                    print("\n"*4)
                     print("baseline inputted: ", baseline)       # zelfde print als spier_enkel_notch
-                    print("\n\n\n\n")
+                    print("\n"*4)
 
                 # ── Waarden afdrukken en opslaan (zelfde als spier_enkel_notch) ──
                 print(f"Raw: {raw_value:<8} | Filtered: {notch_out:.2f}")  # zelfde format
