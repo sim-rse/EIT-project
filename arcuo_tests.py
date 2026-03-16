@@ -10,7 +10,7 @@ MODE = 'webcam'
 aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 detector = aruco.ArucoDetector(aruco_dict)
 
-def get_zone(image, zone_width = 600, zone_height = 400):
+def get_zone(image, zone_width = 8, zone_height = 12):
     corners, ids, _ = detector.detectMarkers(image)
 
     print(f"corners: {corners}\nid's: {ids}")

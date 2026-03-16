@@ -76,7 +76,7 @@ def move_backward(speed):
 def ROTSPEED(dutycycle):    #lineaire regressie om de hoeksnelheid van de draaing te berekenen afhankelijk van de dutycycle
     return ...
 
-def turn_left(angle, dutycycle):             #we moeten nog de dutycycle aanpassen aan de gevraagde rotspeed!!
+def turn_left(angle, dutycycle):             
     PWM_left(dutycycle, False)                     #hoe trager je draait hoe preciezer je kan zijn Note: deze functie zal mss in mplab moeten geimplementeerd worden voor betere preciesie
     PWM_right(dutycycle, True)
     time.sleep(angle/ROTSPEED(dutycycle))

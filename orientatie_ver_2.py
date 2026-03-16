@@ -34,7 +34,7 @@ if __name__ == "__main__":
         _, color_image = cap.read()
         corners, ids, _ = detector.detectMarkers(color_image)
 
-        angle = aruco_angle_from_x_axis(color_image)
+        angle = aruco_angle_from_x_axis(color_image,3)
 
         aruco.drawDetectedMarkers(color_image, corners, ids)
         cv2.putText(color_image, f"Angle: {int(angle)} deg", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
