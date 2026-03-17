@@ -40,6 +40,7 @@ import cv2.aruco as aruco
 import queue
 
 from mazeshower import show_matrix
+from miscelaneous import *
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MOTOR FUNCTIES
@@ -106,6 +107,8 @@ def turn_right_90(speed):
 def stop_motors():
     """Stop alle motoren onmiddellijk."""
     move_forward(0)
+    global huidige_snelheid
+    huidige_snelheid = 0
     print("[MOTOR] Stop")
     # TODO: bijv. motor_links.stop() en motor_rechts.stop()
 
@@ -192,7 +195,7 @@ detector = aruco.ArucoDetector(dictionary)
 # DOOLHOF HERKRNNINGS FUNCTIEs  (overgenomen uit aruco_tests.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_zone(image, zone_width = 8*10, zone_height = 12*10):
+def get_zone(image, zone_width = 8*30, zone_height = 12*30):
     corners, ids, _ = detector.detectMarkers(image)
 
     #print(f"corners: {corners}\nid's: {ids}")
@@ -236,8 +239,11 @@ def get_zone(image, zone_width = 8*10, zone_height = 12*10):
     #cv2.imshow("markers", image)
     return True, warped
 
-def to_matrix(img, target_h = 12, target_w = 8):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+def to_matrix(img, target_h = 12, target_w = 8, threshold = 127):
+    if len(img.shape) == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img  # already grayscale
 
     h, w = gray.shape
 
@@ -254,7 +260,7 @@ def to_matrix(img, target_h = 12, target_w = 8):
     means = blocks.mean(axis=(1, 3))
 
     # Convert to binary
-    bw = (means > 127).astype(int)
+    bw = (means > threshold).astype(int)
 
     #print(bw)
     return bw.tolist()
@@ -462,7 +468,7 @@ def path_to_commands(path):
     if not path or len(path) < 2:   # te kort pad → geen commando's
         return []
 
-    current_dir = (-1, 0)           # startrichting = omhoog (rij neemt af)
+    current_dir = (0, -1)           # startrichting = omhoog (rij neemt af)
     commands    = []                 # lijst van commando's die gevuld wordt
 
     for i in range(1, len(path)):                       # loop over opeenvolgende celparen
@@ -536,7 +542,7 @@ if not TESTMODE:
 
 
 if TESTMODE:
-    img = cv2.imread("data\\labyrinthe_aruco_perspective.png")
+    img = cv2.imread("data\\render3.png")      #labyrinthe_aruco_perspective.png
     print("testmode enabled!")
 else:
     cap = cv2.VideoCapture(0)   # camera starten op index 0 (eerste beschikbare camera)
@@ -559,10 +565,16 @@ while True:
         frame = img
     else:
         frame = cap.read()
-    success, warped_image = get_zone(frame, matrix_cols*5, matrix_rows*5)    #leest frame en return een image van de doolhof
+    success, warped_image = get_zone(frame, matrix_cols*10, matrix_rows*10)    #leest frame en return een image van de doolhof
     if success:
         break
-maze_matrix = to_matrix(warped_image,12,8)
+
+processed_image = image_threshold(warped_image, 0.35)
+
+#cv2.imshow("warped", warped_image)
+cv2.imshow("processed", processed_image)
+cv2.waitKey()
+maze_matrix = to_matrix(processed_image,12,8)
 
 print("Doolhof matrix succesvol ingelezen.")
 
@@ -578,10 +590,8 @@ print(f"maze matrix: {maze_matrix}")
 
 path = bfs(maze_matrix, START, END)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
 
+input()
 
-print(f"path = {path}")
-cv2.waitKey()
-exit()
 
 if path is None:                            # geen pad gevonden in het doolhof
     print("FOUT: Geen pad gevonden! Controleer de camera of het doolhof.")
@@ -591,20 +601,25 @@ if path is None:                            # geen pad gevonden in het doolhof
     exit()
 
 print(f"Pad gevonden: {len(path)} cellen")  # aantal stappen in het pad
+print(f"path = {path}")
 
 # Pad tekenen op het frame (gebaseerd op uitgecommentarieerde code in pad_herkenning.py)
-ret, frame = cap.read()                     # nieuw frame voor visualisatie
-if ret:
-    for (x,y) in path:                      # loop over alle cellen in het pad (zelfde als pad_herkenning.py)
-        px = int(y * frame.shape[1] / matrix_cols)   # kolom → pixelcoördinaat x
-        py = int(x * frame.shape[0] / matrix_rows)   # rij → pixelcoördinaat y
-        cv2.circle(frame, (px,py), 1, (0,0,255), -1) # rode stipjes (zelfde als pad_herkenning.py)
-    cv2.imshow("Pad visualisatie", frame)   # toon frame met pad ingetekend
-    cv2.waitKey(500)                        # even wachten zodat pad zichtbaar is
+if not TESTMODE:
+    ret, frame = cap.read()                     # nieuw frame voor visualisatie
+    if ret:
+        for (x,y) in path:                      # loop over alle cellen in het pad (zelfde als pad_herkenning.py)
+            px = int(y * frame.shape[1] / matrix_cols)   # kolom → pixelcoördinaat x
+            py = int(x * frame.shape[0] / matrix_rows)   # rij → pixelcoördinaat y
+            cv2.circle(frame, (px,py), 1, (0,0,255), -1) # rode stipjes (zelfde als pad_herkenning.py)
+        cv2.imshow("Pad visualisatie", frame)   # toon frame met pad ingetekend
+        cv2.waitKey(500)                        # even wachten zodat pad zichtbaar is
+
+
 
 # Zet het pad om naar rijcommando's
 commands = path_to_commands(path)           # lijst van 'forward', 'turn_left', 'turn_right', 'turn_back'
 print(f"Commando's ({len(commands)} totaal): {commands}")
+
 
 # Index om bij te houden welk commando als volgende uitgevoerd wordt
 commando_index = 0                          # start bij het eerste commando
