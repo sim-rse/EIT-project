@@ -38,6 +38,9 @@ from collections import deque       # wachtrij voor BFS (zelfde als pad_herkenni
 import time                         # tijdsmeting voor snelheidsregeling
 import cv2.aruco as aruco
 import queue
+
+from mazeshower import show_matrix
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MOTOR FUNCTIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,8 +118,8 @@ TESTMODE = True
 # ── Doolhof afmetingen (uit de opgave) ───────────────────────────────────────
 matrix_rows = 8                 # aantal rijen in het doolhof (korte zijde = 2 m)
 matrix_cols = 12                # aantal kolommen in het doolhof (lange zijde = 3 m)
-START       = (6, 0)            # ingang: linksonder, pijl wijst omhoog
-END         = (0, 10)           # uitgang: rechtsboven, pijl wijst naar rechts
+START       = (0, 11)            # ingang: linksonder, pijl wijst omhoog             coordinatensysteem (y,x) met origin topleft
+END         = (7, 1)           # uitgang: rechtsboven, pijl wijst naar rechts       (vraag mij niet waarom ma als je x en y omwisselt warkt het anders wordt het ergensgeswitchd. heb geen tijd om het te fixen in geval een assistent dit leest)
 
 # ── Seriële poort (zelfde als spier_enkel_notch) ─────────────────────────────
 BAUD          = 444444          # baudrate van de microcontroller
@@ -192,7 +195,7 @@ detector = aruco.ArucoDetector(dictionary)
 def get_zone(image, zone_width = 8*10, zone_height = 12*10):
     corners, ids, _ = detector.detectMarkers(image)
 
-    print(f"corners: {corners}\nid's: {ids}")
+    #print(f"corners: {corners}\nid's: {ids}")
     
     def check_ids(ids, ids_to_look_for):
         treshhold = len(ids_to_look_for)
@@ -226,11 +229,11 @@ def get_zone(image, zone_width = 8*10, zone_height = 12*10):
         M = cv2.getPerspectiveTransform(pts, dst)
         warped = cv2.warpPerspective(image, M, (zone_width, zone_height))
 
-        cv2.imshow("warped", warped)
+        #cv2.imshow("warped", warped)
 
     aruco.drawDetectedMarkers(image, corners, ids)
     image = cv2.resize(image, (zone_width*3, zone_height*3))
-    cv2.imshow("markers", image)
+    #cv2.imshow("markers", image)
     return True, warped
 
 def to_matrix(img, target_h = 12, target_w = 8):
@@ -260,7 +263,8 @@ def to_matrix(img, target_h = 12, target_w = 8):
 # BFS FUNCTIE  (exact overgenomen uit pad_herkenning.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def bfs(maze, start, end, allowed_color = 1):
+
+def bfs(maze, start, end, allowed_color = 0):
     """
     BFS pathfinding (= breadth first search).
     Zoekt het kortste pad van start naar end in het doolhof.
@@ -268,6 +272,8 @@ def bfs(maze, start, end, allowed_color = 1):
     omdat BFS altijd de kortste route uitkiest.
     maze[r][c] == 0 betekent vrij pad, == 1 betekent muur.
     """
+    maze = np.array(maze, dtype=np.uint8)
+    #maze = maze.transpose()
     rows, cols = len(maze), len(maze[0])    # afmetingen van de maze matrix ophalen
     queue = deque()                          # lege wachtrij aanmaken
     queue.append((start, [start]))           # beginpositie + pad tot nu toe toevoegen
@@ -278,13 +284,16 @@ def bfs(maze, start, end, allowed_color = 1):
     while queue:                             # blijf zoeken zolang er cellen in de wachtrij zitten
         (x,y), path = queue.popleft()        # volgende cel uit wachtrij halen
         if (x,y) == end:                     # doelcel bereikt → pad teruggeven
+            print('oplossing gevonden!!')
             return path
         for dx,dy in directions:             # alle 4 buren bekijken
             nx, ny = x+dx, y+dy              # coördinaten van de buurcel berekenen
-            if 0<=nx<rows and 0<=ny<cols:    # controleer of buurcel binnen het grid valt
-                if maze[nx][ny]==allowed_color and (nx,ny) not in visited:  # vrij pad en nog niet bezocht
+            if 0<=nx<cols and 0<=ny<rows:    # controleer of buurcel binnen het grid valt
+                if maze[ny,nx]==allowed_color and (nx,ny) not in visited:  # vrij pad en nog niet bezocht
                     visited.add((nx,ny))     # markeer als bezocht zodat we niet terugkeren
                     queue.append(((nx,ny), path + [(nx,ny)]))   # voeg toe aan wachtrij met uitgebreid pad
+                    show_matrix(maze, path, visited, start, end, waittime=5)
+    cv2.destroyAllWindows()
     return None                              # geen pad gevonden (zou niet mogen bij correct doolhof)
 
 def convert_to_path(my_node):
@@ -295,27 +304,34 @@ def convert_to_path(my_node):
             return my_list
         my_node = my_node['parent']
 
-def BFS(maze, start, end, allowed_color = 1):
+def BFS_smart(maze, start, end, allowed_color = 0):
+    traveled =[]
     start_state = {'pos':start,'parent':None}
+    rows, cols = len(maze), len(maze[0])
     q = queue.Queue()
     q.put(start_state)
+    iteration = 0
 
-    rows, cols = len(maze), len(maze[0])
-    
+    show_matrix(np.array(maze, dtype=np.uint8), start=start, end=end, waittime=5)
     while q.empty() == False:
         state = q.get()
         directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        iteration += 1
+        print(f"\riteration {iteration}", end="")
         for zet in directions:
             new_pos = (state['pos'][0]+zet[0],state['pos'][1]+zet[1])
-            if 0<=new_pos[0]<rows and 0<=new_pos[1]<cols:       #als hij nog in de maze zit
+            if new_pos not in traveled and 0<=new_pos[0]<rows and 0<=new_pos[1]<cols:
                 if maze[new_pos[0]][new_pos[1]] == allowed_color:
                     new_state = {'pos':new_pos,'parent':state}
-                    if new_pos == (end) :
+                    if new_pos == end :
                         print("Oplossing gevonden!!!")
                         path = convert_to_path(new_state)
                         return path
                     else: 
                         q.put(new_state)
+                        traveled.append(new_pos)
+                        path = convert_to_path(new_state)
+                        show_matrix(np.array(maze, dtype=np.uint8), path, start=start, end=end, waittime=5)
     return None
 # ─────────────────────────────────────────────────────────────────────────────
 # ORIËNTATIE FUNCTIES  (gebaseerd op orientatie.py)
@@ -535,7 +551,7 @@ print("Bezig met doolhof inlezen via camera...")
 
 maze_matrix = None
 
-cv2.imshow("markers", img)
+#cv2.imshow("markers", img)
 cv2.waitKey()
 
 while True:
@@ -558,7 +574,9 @@ print("Doolhof matrix succesvol ingelezen.")
 
 print(f"Pad zoeken van {START} naar {END} ...")
 
-path = BFS(maze_matrix, START, END)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
+print(f"maze matrix: {maze_matrix}")
+
+path = bfs(maze_matrix, START, END)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
 
 
 print(f"path = {path}")
