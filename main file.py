@@ -805,55 +805,8 @@ try:
 # ─────────────────────────────────────────────────────────────────────────────
 
 except KeyboardInterrupt:
-    # Ctrl+C ingedrukt → grafieken plotten (zelfde als spier_enkel_notch)
-
-    for dirty in lijst_filtered:                    # absolute waarden berekenen (zelfde als spier_enkel_notch)
-        if not isinstance(dirty, list):
-            lijst_filtered_2.append(abs(dirty))
-
-    # Gemiddelden per interval berekenen (zelfde als spier_enkel_notch)
-    averages_all = [sum(lijst_filtered_2[i:i + lines_per_gemiddelde]) / len(lijst_filtered_2[i:i + lines_per_gemiddelde])
-                    for i in range(0, len(lijst_filtered_2), 4)]
-
-    # Grafiek 1: ruwe waarden (zelfde als spier_enkel_notch)
-    x0 = []
-    for i in range(len(lijst_raw)):
-        x0.append(i)
-    plt.plot(x0, lijst_raw, label='Raw')
-    plt.ylim(-800, 800)
-    plt.legend()
-    plt.show()
-
-    # Grafiek 2: gefilterde waarden (zelfde als spier_enkel_notch)
-    x1 = []
-    for i in range(len(lijst_filtered)):
-        x1.append(i)
-    plt.plot(x1, lijst_filtered, label='Filtered')
-    plt.ylim(-800, 800)
-    plt.legend()
-    plt.show()
-
-    # Grafiek 3: gemiddelden met baseline lijn (zelfde als spier_enkel_notch)
-    x2 = []
-    for j in range(len(averages_all)):
-        x2.append(j)
-    plt.plot(x2, averages_all, label='Gemiddelde')
-    plt.ylim(-800, 800)
-    plt.axhline(y=baseline, color='red', linestyle='--')   # rode horizontale lijn op baseline niveau
-    plt.legend()
-    plt.show()
-
-    # Grafiek 4: absolute gefilterde waarden (zelfde als spier_enkel_notch)
-    x3 = []
-    for k in range(len(lijst_filtered_2)):
-        x3.append(k)
-    plt.plot(x3, lijst_filtered_2, label='Absolute waarden')
-    plt.ylim(-800, 800)
-    plt.legend()
-    plt.show()
-
-    print(spier_lijst)              # historiek van spierspanning (zelfde als spier_enkel_notch)
-    print("baseline = ", baseline)  # eindwaarde van de baseline (zelfde als spier_enkel_notch)
+    # Ctrl+C ingedrukt
+    None
 
 finally:
     # Altijd uitvoeren bij afsluiten (zelfde als spier_enkel_notch)
