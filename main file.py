@@ -50,7 +50,9 @@ from frameprocessor import process_frame
 # De signatuur (naam + parameter) blijft hetzelfde, enkel de inhoud verandert
 # speed = percentage van maximaal motorvermogen (0 tot 100)
 
-MAXPWMUINT16 = 498 #dit is de PWM waarde die voor max dutycycle zorgt, hogere waardes geven gaan de snelheid niet verhogen 
+MAXPWMUINT16 = 498 #dit is de PWM waarde die voor max dutycycle zorgt, hogere waardes geven gaan de snelheid niet verhogen
+
+control_mode = "muscle" # Voor backup met spacebar
 
 def PWM_left(dutycycle, forwards = True):       #geeft
     if forwards:
@@ -646,7 +648,17 @@ input("Setup klaar, druk een key om te starten")
 
 try:
     while True:                             # oneindige lus (zelfde als spier_enkel_notch)
-
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('o'):
+            control_mode = "keyboard"
+        if control_mode == "muscle":
+            intentie_gas_geven = spier_gespannen
+        else:
+            # Keyboard mode: Spatiebalk (ASCII 32)
+            if key == 32:
+                intentie_gas_geven = True
+            else:
+                intentie_gas_geven = False
         # ── Spiersensor: tellers verhogen (zelfde als spier_enkel_notch) ─────
         baseline_teller += 1               # totale teller voor baselinebepaling
 
@@ -709,7 +721,8 @@ try:
             laser_ok = lees_laser_status(ser)       # True als laser sensor contact detecteert
 
             # ── Snelheid bijwerken op basis van spierspanning ─────────────────
-            huidige_snelheid = update_speed(spier_gespannen)  # geleidelijke ramp-up/down
+
+            huidige_snelheid = update_speed(intentie_gas_geven)  # geleidelijke ramp-up/down
 
             """------------
             Camera gedeelte
