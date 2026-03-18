@@ -41,6 +41,7 @@ import queue
 
 from mazeshower import show_matrix
 from miscelaneous import *
+from frameprocessor import process_frame
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MOTOR FUNCTIES
@@ -53,16 +54,16 @@ MAXPWMUINT16 = 498 #dit is de PWM waarde die voor max dutycycle zorgt, hogere wa
 
 def PWM_left(dutycycle, forwards = True):       #geeft
     if forwards:
-        ser_drive.write(f'lf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'l{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
     else:
-        ser_drive.write(f'lb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'a{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
         
 
 def PWM_right(dutycycle, forwards = True):
     if forwards:
-        ser_drive.write(f'rf{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'r{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
     else:
-        ser_drive.write(f'rb{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        ser_drive.write(f'b{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
 
 def move_forward(speed):
     """Rijd rechtdoor aan de opgegeven snelheid (0-100 %)."""
@@ -116,7 +117,8 @@ def stop_motors():
 # CONSTANTEN & INSTELLINGEN
 # ─────────────────────────────────────────────────────────────────────────────
 
-TESTMODE = True
+TESTMODE = False
+UART_ENABLED = False
 
 # ── Doolhof afmetingen (uit de opgave) ───────────────────────────────────────
 matrix_rows = 8                 # aantal rijen in het doolhof (korte zijde = 2 m)
@@ -236,7 +238,7 @@ def get_zone(image, zone_width = 8*30, zone_height = 12*30):
 
     aruco.drawDetectedMarkers(image, corners, ids)
     image = cv2.resize(image, (zone_width*3, zone_height*3))
-    #cv2.imshow("markers", image)
+    cv2.imshow("markers", image)
     return True, warped
 
 def to_matrix(img, target_h = 12, target_w = 8, threshold = 127):
@@ -520,7 +522,7 @@ def update_speed(spier_gespannen):
 # SERIËLE POORT INITIALISATIE  (zelfde als spier_enkel_notch)
 # ─────────────────────────────────────────────────────────────────────────────
 
-if not TESTMODE: 
+if not TESTMODE and UART_ENABLED: 
     def UART_intit(PORT, BAUD):
         ser = serial.Serial(port=PORT, baudrate=BAUD, timeout=0.1)  # seriële verbinding openen
         if ser.is_open:
@@ -545,7 +547,7 @@ if TESTMODE:
     img = cv2.imread("data\\render3.png")      #labyrinthe_aruco_perspective.png
     print("testmode enabled!")
 else:
-    cap = cv2.VideoCapture(0)   # camera starten op index 0 (eerste beschikbare camera)
+    cap = cv2.VideoCapture(1)   # camera starten op index 0 (eerste beschikbare camera)
     
 # ─────────────────────────────────────────────────────────────────────────────
 # FASE 1: DOOLHOF INLEZEN  (gebaseerd op camera_matrix.py)
@@ -567,7 +569,9 @@ while True:
         frame = cap.read()
     success, warped_image = get_zone(frame, matrix_cols*10, matrix_rows*10)    #leest frame en return een image van de doolhof
     if success:
+        cv2.destroyAllWindows()
         break
+
 
 processed_image = image_threshold(warped_image, 0.35)
 
@@ -623,7 +627,7 @@ print(f"Commando's ({len(commands)} totaal): {commands}")
 
 # Index om bij te houden welk commando als volgende uitgevoerd wordt
 commando_index = 0                          # start bij het eerste commando
-
+current_path_index = 0                      #waar wij zitten in het pad
 # ─────────────────────────────────────────────────────────────────────────────
 # FASE 3: BASELINE METEN  (zelfde als spier_enkel_notch)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -637,6 +641,9 @@ print("Houd spier ontspannen voor baseline meting (5 seconden)...")
 # HOOFDLUS  (structuur gebaseerd op spier_enkel_notch try/while/except)
 # ─────────────────────────────────────────────────────────────────────────────
 
+input("Setup klaar, druk een key om te starten")
+
+
 try:
     while True:                             # oneindige lus (zelfde als spier_enkel_notch)
 
@@ -649,7 +656,7 @@ try:
         sub  = "spierkracht: "                           # prefix voor spierkracht data
 
         if not line:                        # lege lijn → overslaan
-            continue
+            pass                            #was eerder continue ma we gaan nie alles skippen als de spiersensor nie meewerkt hn
 
         try:
             # ── Spierkracht waarde uitlezen (zelfde als spier_enkel_notch) ───
@@ -702,13 +709,17 @@ try:
             # ── Snelheid bijwerken op basis van spierspanning ─────────────────
             huidige_snelheid = update_speed(spier_gespannen)  # geleidelijke ramp-up/down
 
+            """------------
+            Camera gedeelte
+            -------------"""
+
             # ── Oriëntatie bepalen via camera (gebaseerd op orientatie.py) ────
             ret, frame = cap.read()                 # lees frame van camera
             if ret:
-                hoek, frame = bepaal_orientatie(frame)  # hoek + geannoteerd frame
-                cv2.imshow("Origineel", frame)      # toon frame met oriëntatiepijl (zelfde als orientatie.py)
+                hoek, frame2 = bepaal_orientatie(frame)  # hoek + geannoteerd frame
+                cv2.imshow("Origineel", frame2)      # toon frame met oriëntatiepijl (zelfde als orientatie.py)
                 cv2.imshow("Threshold", cv2.threshold(                # toon threshold (zelfde als orientatie.py)
-                    cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5,5), 0),
+                    cv2.GaussianBlur(cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY), (5,5), 0),
                     200, 255, cv2.THRESH_BINARY)[1])
 
             # ── Navigatie uitvoeren (enkel als laser ok EN baseline bepaald) ──
@@ -719,8 +730,19 @@ try:
                     stop_motors()
                     print("[LASER] Geen contact gedetecteerd → motoren geblokkeerd!")
 
-                else:
-                    # Laser detecteert contact → auto mag rijden
+                else:       # Laser detecteert contact → auto mag rijden
+                    command = process_frame(frame, path, current_path_index)
+                    match command:
+                        case "NO_MARKER":
+                            print("[info] no marker found!!\ncontinuing with current task")
+                        case "NEXT_INSTRUCTION":
+                            commando_index +=1
+                            current_path_index +=1 #ook al moet hij draaien gaat hij na het draaien altijd moeten voortrijden en dus naar het volgende vak van het doolhof rijden
+                        case "FINISHED": 
+                            commando_index = len(commands) + 1
+                        case "KEEP_GOING":
+                            pass
+                    
                     cmd = commands[commando_index]  # huidig te uit te voeren commando
 
                     if cmd == 'forward':
@@ -729,9 +751,8 @@ try:
                             move_forward(huidige_snelheid)   # rijd vooruit
                         else:
                             stop_motors()                    # snelheid = 0 → stop
-                        commando_index += 1                  # ga naar volgend commando
 
-                    elif cmd in ('turn_left', 'turn_right', 'turn_back'):
+                    elif cmd in ('turn_left', 'turn_right', 'turn_back'):       #als hij moet draaien doe hij het in een keer (script stopt tot dat hij gedraaid is) dit betekent dat we direct naar de volgende commando gaan 
                         # Draaicommando: wacht tot snelheid laag genoeg is
                         if huidige_snelheid > MAX_SPEED_TO_TURN:
                             # Nog te snel → rem af (motoren stoppen, ramp-down loopt door)
@@ -768,12 +789,14 @@ try:
                   f"stap {commando_index}/{len(commands)}")
 
         except ValueError:
+            print("value error!!")
             continue                         # ongeldige waarde op seriële poort → overslaan (zelfde als spier_enkel_notch)
 
         # ── Toets 'q' om te stoppen (zelfde als camera_matrix / orientatie) ──
         if cv2.waitKey(1) & 0xFF == ord('q'):
             print("Gestopt door gebruiker.")
             break
+    time.sleep(0.01)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AFSLUIT BLOK  (exact zelfde structuur als spier_enkel_notch)

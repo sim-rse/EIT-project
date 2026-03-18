@@ -48,7 +48,7 @@ def pixel_to_cell(x, y, frame_w, frame_h, cols=12, rows=8):
 path = [(0,0), (0,1), (0,2), ...]
 current_index = 0
 
-def process_frame(frame, target_id, path, current_index):
+def process_frame(frame, path, current_index, target_id = 0):
     frame_h, frame_w, _ = frame.shape
 
     corners = detect_marker(frame, target_id)
