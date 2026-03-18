@@ -147,7 +147,7 @@ drempel              = 50       # afwijking t.o.v. baseline om spier als gespann
 LASER_THRESHOLD_VOLTAGE = 1.4   # V: grens tussen "contact" en "geen contact"
 LASER_ADC_MAX           = 1023  # maximale ADC waarde (10 bit)
 LASER_VCC               = 5.0   # voedingsspanning microcontroller in volt
-LASER_THRESHOLD_ADC     = int((LASER_THRESHOLD_VOLTAGE / LASER_VCC) * LASER_ADC_MAX)  # ≈ 287
+LASER_THRESHOLD_ADC     = 300
 # Onder threshold → laser raakt sensor → lage weerstand → lage spanning → auto mag rijden
 # Boven threshold → geen lasercontact → hoge weerstand → hoge spanning → auto mag NIET rijden
 
@@ -648,7 +648,6 @@ try:
     while True:                             # oneindige lus (zelfde als spier_enkel_notch)
 
         # ── Spiersensor: tellers verhogen (zelfde als spier_enkel_notch) ─────
-        teller          += 1                # teller binnen huidig meetvenster
         baseline_teller += 1               # totale teller voor baselinebepaling
 
         # ── Seriële lijn lezen (zelfde als spier_enkel_notch) ────────────────
@@ -682,25 +681,28 @@ try:
                     print("\n"*4)
 
                 # ── Waarden afdrukken en opslaan (zelfde als spier_enkel_notch) ──
-                print(f"Raw: {raw_value:<8} | Filtered: {notch_out:.2f}")  # zelfde format
+#                print(f"Raw: {raw_value:<8} | Filtered: {notch_out:.2f}")  # zelfde format
                 lijst_raw.append(raw_value)          # bewaar ruwe waarde voor plot
                 lijst_filtered.append(notch_out)     # bewaar gefilterde waarde voor plot
 
                 # ── Spierspanning detecteren per venster (zelfde als spier_enkel_notch) ──
-                if teller < check_lines:             # venster nog niet vol
-                    if not isinstance(notch_out, list):          # zelfde check als spier_enkel_notch
-                        gemiddelde_lijst.append(notch_out)       # voeg toe aan huidig venster
-                else:                                # venster vol → evalueer
-                    ogenbl_gemiddelde = sum(gemiddelde_lijst)/len(gemiddelde_lijst)  # gemiddelde van venster
-                    if not baseline is None:         # baseline moet al bepaald zijn (zelfde check)
-                        if ogenbl_gemiddelde < baseline - drempel or baseline + drempel < ogenbl_gemiddelde:
-                            spier_gespannen = True   # spier is gespannen
-                            spier_lijst.append("True")   # historiek bijhouden (zelfde als spier_enkel_notch)
-                        else:
-                            spier_gespannen = False  # spier is ontspannen
-                            spier_lijst.append("False")  # historiek bijhouden
-                    teller = 0                       # reset venster teller (zelfde als spier_enkel_notch)
-                    gemiddelde_lijst = []            # reset venster lijst voor volgend venster
+                if baseline_done:
+                    teller += 1
+                    if teller < check_lines:             # venster nog niet vol
+                        if not isinstance(notch_out, list):          # zelfde check als spier_enkel_notch
+                            gemiddelde_lijst.append(notch_out - baseline)       # voeg toe aan huidig venster
+                    else:                                # venster vol → evalueer
+                        ogenbl_gemiddelde = sum(gemiddelde_lijst)/len(gemiddelde_lijst)  # gemiddelde van venster
+                        gemiddelde_lijst = []
+                        if not baseline is None:         # baseline moet al bepaald zijn (zelfde check)
+                            if ogenbl_gemiddelde < 0 - drempel or 0 + drempel < ogenbl_gemiddelde:
+                                spier_gespannen = True   # spier is gespannen
+                                spier_lijst.append("True")   # historiek bijhouden (zelfde als spier_enkel_notch)
+                            else:
+                                spier_gespannen = False  # spier is ontspannen
+                                spier_lijst.append("False")  # historiek bijhouden
+                            print(f"spier gespannen: {spier_gespannen}")
+                        teller = 0                       # reset venster teller (zelfde als spier_enkel_notch)
 
             # ── Laser status lezen ────────────────────────────────────────────
             # De microcontroller stuurt ook "laser: <ADC_waarde>" op dezelfde seriële poort
