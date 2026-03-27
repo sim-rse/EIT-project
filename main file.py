@@ -55,17 +55,19 @@ MAXPWMUINT16 = 498 #dit is de PWM waarde die voor max dutycycle zorgt, hogere wa
 control_mode = "muscle" # Voor backup met spacebar
 
 def PWM_left(dutycycle, forwards = True):       #geeft
-    if forwards:
-        ser_drive.write(f'l{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
-    else:
-        ser_drive.write(f'a{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+    if UART_ENABLED:
+        if forwards:
+            ser_drive.write(f'l{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        else:
+            ser_drive.write(f'a{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
         
 
 def PWM_right(dutycycle, forwards = True):
-    if forwards:
-        ser_drive.write(f'r{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
-    else:
-        ser_drive.write(f'b{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+    if UART_ENABLED:
+        if forwards:
+            ser_drive.write(f'r{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
+        else:
+            ser_drive.write(f'b{int(dutycycle*MAXPWMUINT16)}\n'.encode('ascii'))
 
 def move_forward(speed):
     """Rijd rechtdoor aan de opgegeven snelheid (0-100 %)."""
@@ -82,17 +84,19 @@ def move_backward(speed):
     # TODO: bijv. motor_links.backward(speed) en motor_rechts.backward(speed)
 
 def ROTSPEED(dutycycle):    #lineaire regressie om de hoeksnelheid van de draaing te berekenen afhankelijk van de dutycycle
-    return ...
+    return 30
 
 def turn_left(angle, dutycycle):             
     PWM_left(dutycycle, False)                     #hoe trager je draait hoe preciezer je kan zijn Note: deze functie zal mss in mplab moeten geimplementeerd worden voor betere preciesie
     PWM_right(dutycycle, True)
     time.sleep(angle/ROTSPEED(dutycycle))
+    #print(f"Draaien naar links met hoek {angle}")
 
 def turn_right(angle, dutycycle):
     PWM_left(dutycycle)
     PWM_right(dutycycle, False)
     time.sleep(angle/ROTSPEED(dutycycle))
+    #print(f"Draaien naar rechts met hoek {angle}")
 
 
 def turn_left_90(speed):
@@ -121,6 +125,11 @@ def stop_motors():
 
 TESTMODE = False
 UART_ENABLED = False
+AUTOMAZE = False
+if AUTOMAZE:
+    THRESHOLD = 127
+else: THRESHOLD = 210
+NO_CAR = True
 
 # ── Doolhof afmetingen (uit de opgave) ───────────────────────────────────────
 matrix_rows = 8                 # aantal rijen in het doolhof (korte zijde = 2 m)
@@ -243,7 +252,7 @@ def get_zone(image, zone_width = 8*30, zone_height = 12*30):
     cv2.imshow("markers", image)
     return True, warped
 
-def to_matrix(img, target_h = 12, target_w = 8, threshold = 127):
+def to_matrix(img, target_h = 12, target_w = 8, threshold = THRESHOLD):
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
@@ -303,7 +312,7 @@ def bfs(maze, start, end, allowed_color = 0):
                     visited.add((nx,ny))     # markeer als bezocht zodat we niet terugkeren
                     queue.append(((nx,ny), path + [(nx,ny)]))   # voeg toe aan wachtrij met uitgebreid pad
                     show_matrix(maze, path, visited, start, end, waittime=5)
-    cv2.destroyAllWindows()
+    #cv2.destroyAllWindows()
     return None                              # geen pad gevonden (zou niet mogen bij correct doolhof)
 
 def convert_to_path(my_node):
@@ -368,7 +377,7 @@ def bepaal_orientatie(frame, id_sought = 0):
     marker_dict = {id_[0]: corner for corner, id_ in zip(corners, ids)}
     if id_sought not in marker_dict:
         print("geen aruco van juiste index gevonden !!")
-        return 0
+        return 0, 
 
     pts = marker_dict[id_sought][0]
     v = pts[1] - pts[0]  # top edge direction
@@ -545,10 +554,10 @@ if not TESTMODE and UART_ENABLED:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-if TESTMODE:
+if TESTMODE or AUTOMAZE:
     img = cv2.imread("data\\render3.png")      #labyrinthe_aruco_perspective.png
-    print("testmode enabled!")
-else:
+    print("maze automatich berekend")
+if not TESTMODE:
     cap = cv2.VideoCapture(1)   # camera starten op index 0 (eerste beschikbare camera)
     
 # ─────────────────────────────────────────────────────────────────────────────
@@ -565,23 +574,29 @@ maze_matrix = None
 cv2.waitKey()
 
 while True:
-    if TESTMODE:
+    if TESTMODE or AUTOMAZE:
         frame = img
     else:
-        frame = cap.read()
+        ret, frame = cap.read()
+    cv2.imshow("camera", frame)
     success, warped_image = get_zone(frame, matrix_cols*10, matrix_rows*10)    #leest frame en return een image van de doolhof
+    cv2.waitKey(1)
+
     if success:
         cv2.destroyAllWindows()
         break
 
 
-processed_image = image_threshold(warped_image, 0.35)
+processed_image = image_threshold(warped_image, 0.50)
 
 #cv2.imshow("warped", warped_image)
 cv2.imshow("processed", processed_image)
+cv2.imwrite("processed.png", processed_image)
+cv2.imshow("original", warped_image)
 cv2.waitKey()
 maze_matrix = to_matrix(processed_image,12,8)
 
+show_matrix(np.array(maze_matrix, dtype=np.uint8), waittime=0)
 print("Doolhof matrix succesvol ingelezen.")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -596,6 +611,7 @@ print(f"maze matrix: {maze_matrix}")
 
 path = bfs(maze_matrix, START, END)         # BFS uitvoeren op de ingelezen matrix (zelfde als pad_herkenning.py)
 
+cv2.destroyAllWindows()
 input()
 
 
@@ -603,14 +619,16 @@ if path is None:                            # geen pad gevonden in het doolhof
     print("FOUT: Geen pad gevonden! Controleer de camera of het doolhof.")
     cap.release()
     cv2.destroyAllWindows()
-    ser.close()
-    exit()
+    if UART_ENABLED:
+        ser.close()
+        ser_drive.close()
+    path = [(0, 11), (0, 10), (1, 10), (1, 9), (1, 8), (0, 8), (0, 7), (0, 6), (0, 5), (0, 4), (0, 3), (0, 2), (0, 1), (0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (3, 2), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6), (5, 6), (6, 6), (7, 6), (7, 5), (7, 4), (7, 3), (6, 3), (6, 2), (6, 1), (7, 1)]
 
 print(f"Pad gevonden: {len(path)} cellen")  # aantal stappen in het pad
-print(f"path = {path}")
+print(f"\x1b[0;32;49mpath = \x1b[0;39;49m{path}")
 
 # Pad tekenen op het frame (gebaseerd op uitgecommentarieerde code in pad_herkenning.py)
-if not TESTMODE:
+if False:
     ret, frame = cap.read()                     # nieuw frame voor visualisatie
     if ret:
         for (x,y) in path:                      # loop over alle cellen in het pad (zelfde als pad_herkenning.py)
@@ -624,12 +642,13 @@ if not TESTMODE:
 
 # Zet het pad om naar rijcommando's
 commands = path_to_commands(path)           # lijst van 'forward', 'turn_left', 'turn_right', 'turn_back'
-print(f"Commando's ({len(commands)} totaal): {commands}")
+print(f"\x1b[0;32;49mCommando's \x1b[0;39;49m({len(commands)} totaal): {commands}")
 
 
 # Index om bij te houden welk commando als volgende uitgevoerd wordt
 commando_index = 0                          # start bij het eerste commando
 current_path_index = 0                      #waar wij zitten in het pad
+new_command = True
 # ─────────────────────────────────────────────────────────────────────────────
 # FASE 3: BASELINE METEN  (zelfde als spier_enkel_notch)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -663,62 +682,68 @@ try:
         baseline_teller += 1               # totale teller voor baselinebepaling
 
         # ── Seriële lijn lezen (zelfde als spier_enkel_notch) ────────────────
-        line = ser.readline().decode('utf-8').strip()   # lees lijn van microcontroller
-        sub  = "spierkracht: "                           # prefix voor spierkracht data
+        if UART_ENABLED and not NO_CAR:
+            line = ser.readline().decode('utf-8').strip()   # lees lijn van microcontroller
+            sub  = "spierkracht: "                           # prefix voor spierkracht data
 
-        if not line:                        # lege lijn → overslaan
-            pass                            #was eerder continue ma we gaan nie alles skippen als de spiersensor nie meewerkt hn
+            if not line:                        # lege lijn → overslaan
+                pass                            #was eerder continue ma we gaan nie alles skippen als de spiersensor nie meewerkt hn
 
         try:
             # ── Spierkracht waarde uitlezen (zelfde als spier_enkel_notch) ───
-            if sub in line:                 # controleer of lijn spierkracht data bevat
-                part = line.split(sub)[1]   # deel na de prefix ophalen
-                waarde_spierkracht = part.split(",")[0].strip()  # eerste waarde voor komma
-                raw_value = float(waarde_spierkracht)            # omzetten naar getal
+            if UART_ENABLED:
+                if sub in line:                 # controleer of lijn spierkracht data bevat
+                    part = line.split(sub)[1]   # deel na de prefix ophalen
+                    waarde_spierkracht = part.split(",")[0].strip()  # eerste waarde voor komma
+                    raw_value = float(waarde_spierkracht)            # omzetten naar getal
 
-                # ── Notchfilter toepassen op 50 Hz (zelfde als spier_enkel_notch) ──
-                # Enkel notchfilter, GEEN bandpassfilter (zoals in spier_enkel_notch)
-                notch_out, zi_notch = signal.lfilter(b_notch, a_notch, [raw_value], zi=zi_notch)
-                notch_out = notch_out[0]    # haal scalar uit array van 1 element
+                    # ── Notchfilter toepassen op 50 Hz (zelfde als spier_enkel_notch) ──
+                    # Enkel notchfilter, GEEN bandpassfilter (zoals in spier_enkel_notch)
+                    notch_out, zi_notch = signal.lfilter(b_notch, a_notch, [raw_value], zi=zi_notch)
+                    notch_out = notch_out[0]    # haal scalar uit array van 1 element
 
-                # ── Baseline opbouwen (zelfde als spier_enkel_notch) ─────────
-                if baseline_teller < 5*1000/printsnelheid:      # eerste 5 seconden
-                    if not type(notch_out) == list:              # zelfde check als spier_enkel_notch
-                        baseline_check.append(notch_out)         # voeg toe aan baseline samples
-                elif not baseline_done:                          # 5 seconden voorbij, nog geen baseline
-                    baseline = median(baseline_check)            # mediaan als baseline (zelfde als spier_enkel_notch)
-                    baseline_done = True                         # markeer baseline als gedaan
-                    print("\n"*4)
-                    print("baseline inputted: ", baseline)       # zelfde print als spier_enkel_notch
-                    print("\n"*4)
+                    # ── Baseline opbouwen (zelfde als spier_enkel_notch) ─────────
+                    if baseline_teller < 5*1000/printsnelheid:      # eerste 5 seconden
+                        if not type(notch_out) == list:              # zelfde check als spier_enkel_notch
+                            baseline_check.append(notch_out)         # voeg toe aan baseline samples
+                    elif not baseline_done:                          # 5 seconden voorbij, nog geen baseline
+                        baseline = median(baseline_check)            # mediaan als baseline (zelfde als spier_enkel_notch)
+                        baseline_done = True                         # markeer baseline als gedaan
+                        print("\n"*4)
+                        print("baseline inputted: ", baseline)       # zelfde print als spier_enkel_notch
+                        print("\n"*4)
 
-                # ── Waarden afdrukken en opslaan (zelfde als spier_enkel_notch) ──
-#                print(f"Raw: {raw_value:<8} | Filtered: {notch_out:.2f}")  # zelfde format
-                lijst_raw.append(raw_value)          # bewaar ruwe waarde voor plot
-                lijst_filtered.append(notch_out)     # bewaar gefilterde waarde voor plot
+                    # ── Waarden afdrukken en opslaan (zelfde als spier_enkel_notch) ──
+                    #print(f"Raw: {raw_value:<8} | Filtered: {notch_out:.2f}")  # zelfde format
+                    lijst_raw.append(raw_value)          # bewaar ruwe waarde voor plot
+                    lijst_filtered.append(notch_out)     # bewaar gefilterde waarde voor plot
 
-                # ── Spierspanning detecteren per venster (zelfde als spier_enkel_notch) ──
-                if baseline_done:
-                    teller += 1
-                    if teller < check_lines:             # venster nog niet vol
-                        if not isinstance(notch_out, list):          # zelfde check als spier_enkel_notch
-                            gemiddelde_lijst.append(notch_out - baseline)       # voeg toe aan huidig venster
-                    else:                                # venster vol → evalueer
-                        ogenbl_gemiddelde = sum(gemiddelde_lijst)/len(gemiddelde_lijst)  # gemiddelde van venster
-                        gemiddelde_lijst = []
-                        if not baseline is None:         # baseline moet al bepaald zijn (zelfde check)
-                            if ogenbl_gemiddelde < 0 - drempel or 0 + drempel < ogenbl_gemiddelde:
-                                spier_gespannen = True   # spier is gespannen
-                                spier_lijst.append("True")   # historiek bijhouden (zelfde als spier_enkel_notch)
-                            else:
-                                spier_gespannen = False  # spier is ontspannen
-                                spier_lijst.append("False")  # historiek bijhouden
-                            print(f"spier gespannen: {spier_gespannen}")
-                        teller = 0                       # reset venster teller (zelfde als spier_enkel_notch)
-
+                    # ── Spierspanning detecteren per venster (zelfde als spier_enkel_notch) ──
+                    if baseline_done:
+                        teller += 1
+                        if teller < check_lines:             # venster nog niet vol
+                            if not isinstance(notch_out, list):          # zelfde check als spier_enkel_notch
+                                gemiddelde_lijst.append(notch_out - baseline)       # voeg toe aan huidig venster
+                        else:                                # venster vol → evalueer
+                            ogenbl_gemiddelde = sum(gemiddelde_lijst)/len(gemiddelde_lijst)  # gemiddelde van venster
+                            gemiddelde_lijst = []
+                            if not baseline is None:         # baseline moet al bepaald zijn (zelfde check)
+                                if ogenbl_gemiddelde < 0 - drempel or 0 + drempel < ogenbl_gemiddelde:
+                                    spier_gespannen = True   # spier is gespannen
+                                    spier_lijst.append("True")   # historiek bijhouden (zelfde als spier_enkel_notch)
+                                else:
+                                    spier_gespannen = False  # spier is ontspannen
+                                    spier_lijst.append("False")  # historiek bijhouden
+                                print(f"spier gespannen: {spier_gespannen}")
+                            teller = 0                       # reset venster teller (zelfde als spier_enkel_notch)
+            else:
+                baseline_done = True
             # ── Laser status lezen ────────────────────────────────────────────
             # De microcontroller stuurt ook "laser: <ADC_waarde>" op dezelfde seriële poort
-            laser_ok = lees_laser_status(ser)       # True als laser sensor contact detecteert
+            if not NO_CAR:
+                laser_ok = lees_laser_status(ser)       # True als laser sensor contact detecteert
+            else:
+                laser_ok = True
 
             # ── Snelheid bijwerken op basis van spierspanning ─────────────────
 
@@ -730,66 +755,81 @@ try:
 
             # ── Oriëntatie bepalen via camera (gebaseerd op orientatie.py) ────
             ret, frame = cap.read()                 # lees frame van camera
-            if ret:
+            if False:
                 hoek, frame2 = bepaal_orientatie(frame)  # hoek + geannoteerd frame
                 cv2.imshow("Origineel", frame2)      # toon frame met oriëntatiepijl (zelfde als orientatie.py)
                 cv2.imshow("Threshold", cv2.threshold(                # toon threshold (zelfde als orientatie.py)
                     cv2.GaussianBlur(cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY), (5,5), 0),
                     200, 255, cv2.THRESH_BINARY)[1])
-
+            if ret:
+                cv2.imshow("Camera", frame)
             # ── Navigatie uitvoeren (enkel als laser ok EN baseline bepaald) ──
             if commando_index < len(commands) and baseline_done:
-
-                if not laser_ok:
+                if not laser_ok: 
                     # Laser detecteert GEEN contact → auto mag NIET rijden → motoren stoppen
                     stop_motors()
                     print("[LASER] Geen contact gedetecteerd → motoren geblokkeerd!")
-
+                
                 else:       # Laser detecteert contact → auto mag rijden
-                    command = process_frame(frame, path, current_path_index)
-                    match command:
-                        case "NO_MARKER":
-                            print("[info] no marker found!!\ncontinuing with current task")
-                        case "NEXT_INSTRUCTION":
-                            commando_index +=1
-                            current_path_index +=1 #ook al moet hij draaien gaat hij na het draaien altijd moeten voortrijden en dus naar het volgende vak van het doolhof rijden
-                        case "FINISHED": 
-                            commando_index = len(commands) + 1
-                        case "KEEP_GOING":
-                            pass
+                    command = list(process_frame(frame, path, current_path_index))
+                    if key == ord('n'):
+                        time.sleep(0.3)
+                        command[2] = "NEXT_INSTRUCTION"
+                        print("\nn pressed!")
+                    if True:
+                        match command[2]:
+                            case "NO_MARKER":
+                                #print("[info] no marker found!!\ncontinuing with current task")
+                                pass
+                            case "NEXT_INSTRUCTION":
+                                print("Going to next instruction")
+                                commando_index +=1
+                                current_path_index +=1 #ook al moet hij draaien gaat hij na het draaien altijd moeten voortrijden en dus naar het volgende vak van het doolhof rijden
+                                new_command = True
+                            case "FINISHED": 
+                                commando_index = len(commands) + 1
+                            case "KEEP_GOING":
+                                #print("\rkeep going!")
+                                pass
                     
-                    cmd = commands[commando_index]  # huidig te uit te voeren commando
+                    if new_command:
+                        new_command = False
+                        cmd = commands[commando_index]  # huidig te uit te voeren commando
 
-                    if cmd == 'forward':
-                        # Rijcommando: rijd aan huidige snelheid als spier gespannen is
-                        if huidige_snelheid > 0:
-                            move_forward(huidige_snelheid)   # rijd vooruit
-                        else:
-                            stop_motors()                    # snelheid = 0 → stop
+                        if cmd == 'forward':
+                            # Rijcommando: rijd aan huidige snelheid als spier gespannen is
+                            if huidige_snelheid > 0:
+                                move_forward(huidige_snelheid)   # rijd vooruit
+                            else:
+                                stop_motors()                    # snelheid = 0 → stop
 
-                    elif cmd in ('turn_left', 'turn_right', 'turn_back'):       #als hij moet draaien doe hij het in een keer (script stopt tot dat hij gedraaid is) dit betekent dat we direct naar de volgende commando gaan 
-                        # Draaicommando: wacht tot snelheid laag genoeg is
-                        if huidige_snelheid > MAX_SPEED_TO_TURN:
-                            # Nog te snel → rem af (motoren stoppen, ramp-down loopt door)
-                            stop_motors()
-                            print(f"[NAV] Afremmen voor bocht ({cmd}) | snelheid={huidige_snelheid:.1f}%")
-                        else:
-                            # Veilige snelheid bereikt → draaibeweging uitvoeren
-                            draai_snelheid = max(huidige_snelheid, SPEED_MIN)  # minstens SPEED_MIN
+                        elif cmd in ('turn_left', 'turn_right', 'turn_back'):       #als hij moet draaien doe hij het in een keer (script stopt tot dat hij gedraaid is) dit betekent dat we direct naar de volgende commando gaan 
+                            # Draaicommando: wacht tot snelheid laag genoeg is
+                            if huidige_snelheid > MAX_SPEED_TO_TURN:
+                                # Nog te snel → rem af (motoren stoppen, ramp-down loopt door)
+                                stop_motors()
+                                print(f"[NAV] Afremmen voor bocht ({cmd}) | snelheid={huidige_snelheid:.1f}%")
+                            else:
+                                # Veilige snelheid bereikt → draaibeweging uitvoeren
+                                draai_snelheid = max(huidige_snelheid, SPEED_MIN)  # minstens SPEED_MIN
 
-                            if cmd == 'turn_left':
-                                turn_left_90(draai_snelheid)         # draai 90° links
+                                if cmd == 'turn_left':
+                                    turn_left_90(draai_snelheid)         # draai 90° links
 
-                            elif cmd == 'turn_right':
-                                turn_right_90(draai_snelheid)        # draai 90° rechts
+                                elif cmd == 'turn_right':
+                                    turn_right_90(draai_snelheid)        # draai 90° rechts
 
-                            elif cmd == 'turn_back':
-                                # 180° keren = twee keer 90° links draaien
-                                turn_left_90(draai_snelheid)         # eerste 90°
-                                time.sleep(0.2)                      # kort wachten tussen de twee draaibewegingen
-                                turn_left_90(draai_snelheid)         # tweede 90°
+                                elif cmd == 'turn_back':
+                                    # 180° keren = twee keer 90° links draaien
+                                    turn_left_90(draai_snelheid)         # eerste 90°
+                                    time.sleep(0.2)                      # kort wachten tussen de twee draaibewegingen
+                                    turn_left_90(draai_snelheid)         # tweede 90°
 
-                            commando_index += 1                      # ga naar volgend commando
+                                commando_index += 1                      # ga naar volgend commando
+                                current_path_index +=1
+                                
+
+                    print("\r",f"stap {commando_index}/{len(commands)},   nodige positie: {path[current_path_index]}, werkelijke positie {command[1]}: commando: {command}", end="")
 
             elif commando_index >= len(commands) and baseline_done:
                 # Alle commando's uitgevoerd → doolhof voltooid
@@ -798,11 +838,13 @@ try:
                 break                                                # verlaat de hoofdlus
 
             # ── Status afdrukken ──────────────────────────────────────────────
-            print(f"[STATUS] spier={'AAN' if spier_gespannen else 'UIT'} | "
+            if not NO_CAR:
+                print(f"[STATUS] spier={'AAN' if spier_gespannen else 'UIT'} | "
                   f"snelheid={huidige_snelheid:.1f}% | "
                   f"laser={'OK' if laser_ok else 'GEBLOKKEERD'} | "
                   f"stap {commando_index}/{len(commands)}")
-
+            cv2.waitKey(1)
+            
         except ValueError:
             print("value error!!")
             continue                         # ongeldige waarde op seriële poort → overslaan (zelfde als spier_enkel_notch)
@@ -826,6 +868,7 @@ finally:
     stop_motors()                               # zeker zijn dat motoren gestopt zijn
     cap.release()                               # camera vrijgeven (zelfde als camera_matrix.py)
     cv2.destroyAllWindows()                     # alle vensters sluiten (zelfde als camera_matrix.py)
-    if ser.is_open:                             # zelfde check als spier_enkel_notch
-        ser.close()
-        print("Poort gesloten.")                # zelfde print als spier_enkel_notch
+    if UART_ENABLED:
+        if ser.is_open:                             # zelfde check als spier_enkel_notch
+            ser.close()
+            print("Poort gesloten.")                # zelfde print als spier_enkel_notch

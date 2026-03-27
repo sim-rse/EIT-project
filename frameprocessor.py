@@ -49,12 +49,13 @@ path = [(0,0), (0,1), (0,2), ...]
 current_index = 0
 
 def process_frame(frame, path, current_index, target_id = 0):
+    cell = (-1,-1)
     frame_h, frame_w, _ = frame.shape
 
     corners = detect_marker(frame, target_id)
 
     if corners is None:
-        return current_index, "NO_MARKER"
+        return current_index, cell, "NO_MARKER"
 
     center = get_center(corners)
     angle = get_orientation(corners)
@@ -68,14 +69,14 @@ def process_frame(frame, path, current_index, target_id = 0):
         current_index += 1
 
         if current_index < len(path):
-            return current_index, "NEXT_INSTRUCTION"
+            return current_index, cell, "NEXT_INSTRUCTION"
         else:
-            return current_index, "FINISHED"
+            return current_index, cell, "FINISHED"
 
     # CASE 2: still previous cell
     elif current_index > 0 and cell == path[current_index - 1]:
-        return current_index, "KEEP_GOING"
+        return current_index, cell, "KEEP_GOING"
 
     # CASE 3: wrong cell
     else:
-        return current_index, "WRONG_CELL"
+        return current_index, cell, "WRONG_CELL"
